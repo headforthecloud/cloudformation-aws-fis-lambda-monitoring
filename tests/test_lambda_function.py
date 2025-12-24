@@ -1,10 +1,11 @@
 import pytest
 import os
 import logging
-from unittest.mock import MagicMock, patch, Mock
-import boto3
+from unittest.mock import MagicMock, patch
+# import boto3
 from botocore.exceptions import ClientError, NoCredentialsError, BotoCoreError
 from src.lambda_function import lambda_handler
+import json
 
 
 @pytest.fixture
@@ -80,7 +81,7 @@ def test_lambda_handler_success(mock_boto3_client, mock_sts_client, mock_event, 
     assert response['headers']['Content-Type'] == "application/json"
     
     # Parse JSON body
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -100,7 +101,7 @@ def test_lambda_handler_with_empty_event(mock_boto3_client, mock_sts_client, emp
     
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -117,7 +118,7 @@ def test_lambda_handler_with_event_data(mock_boto3_client, mock_sts_client, even
     
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -135,7 +136,7 @@ def test_lambda_handler_none_event_and_context(mock_boto3_client, mock_sts_clien
     
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -160,7 +161,7 @@ def test_lambda_handler_different_account_id(mock_boto3_client, mock_event, mock
     assert "I'm running in account 987654321098" in caplog.text
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['accountId'] == "987654321098"
 
@@ -336,7 +337,7 @@ def test_lambda_handler_response_format(mock_boto3_client, mock_sts_client, mock
     assert isinstance(response['headers'], dict)
     
     # Verify body structure (JSON string)
-    import json
+
     body = json.loads(response['body'])
     assert 'statusMessage' in body
     assert 'accountId' in body
@@ -344,7 +345,7 @@ def test_lambda_handler_response_format(mock_boto3_client, mock_sts_client, mock
     # Verify correct values
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -396,7 +397,7 @@ def test_account_id_format(mock_boto3_client, mock_sts_client, mock_event, mock_
     assert account_id.isdigit()
     
     # Also verify it matches the response
-    import json
+
     body = json.loads(response['body'])
     assert body['accountId'] == account_id
 
@@ -427,7 +428,7 @@ def test_context_attributes_not_used(mock_boto3_client, mock_sts_client, mock_ev
     
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['statusMessage'] == "All OK"
     assert body['accountId'] == "123456789012"
@@ -456,7 +457,7 @@ def test_sts_get_caller_identity_response_structure(mock_boto3_client, mock_even
     
     assert response['statusCode'] == 200
     
-    import json
+
     body = json.loads(response['body'])
     assert body['accountId'] == "111122223333"
     
@@ -469,13 +470,13 @@ def test_sts_get_caller_identity_response_structure(mock_boto3_client, mock_even
     
     response = lambda_handler(mock_event, mock_context)
     
-    import json
+
     body = json.loads(response['body'])
     assert body['accountId'] == "444455556666"
 
 
 @patch('boto3.client')
-def test_lambda_handler_with_numeric_log_level(mock_boto3_client, mock_sts_client, mock_event, mock_context):
+def test_lambda_handler_with_specific_log_level(mock_boto3_client, mock_sts_client, mock_event, mock_context):
     """Test lambda_handler with numeric log level."""
     mock_boto3_client.return_value = mock_sts_client
     

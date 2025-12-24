@@ -1,0 +1,543 @@
+# This template is used to demonstrate the use of FIS to test lambda functions
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FIS Lambda testing experiment
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: The name of the project
+    Default: fis-lambda-demo
+  RetentionInDays:
+    Type: Number
+    Description: Number of days to retain logs
+    Default: 3
+
+Resources:
+  FISConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "fis-config-${AWS::AccountId}-${AWS::Region}-bucket"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FISLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "fis-logs-${AWS::AccountId}-${AWS::Region}-bucket"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FISLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/fis/${ProjectName}"
+      RetentionInDays: !Ref RetentionInDays
+
+  FISLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-test-function"
+      RetentionInDays: !Ref RetentionInDays     
+
+  FISLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-FIS-Lambda-Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-FIS-Lambda-Policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: S3ListAllBuckets
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                Resource: "*"
+              - Sid: S3ListBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${FISConfigBucket}"
+                  - !Sub "arn:aws:s3:::${FISConfigBucket}/*"
+              - Sid: S3GetConfig
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${FISConfigBucket}"
+                  - !Sub "arn:aws:s3:::${FISConfigBucket}/*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DemoLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-test-function"
+      CodeUri: ./src/
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt FISLambdaRole.Arn
+      Architectures:
+        - x86_64
+      Runtime: python3.13
+      MemorySize: 128
+      Timeout: 15
+      LoggingConfig:
+        LogFormat: JSON
+        LogGroup: !Ref FISLambdaLogGroup
+      Tags:
+        Project: !Ref ProjectName
+        FIS-Demo: true
+      Environment:
+        Variables:
+          AWS_FIS_CONFIGURATION_LOCATION: !Sub "${FISConfigBucket.Arn}/FisConfigs/*"
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/aws-fis/bootstrap
+      Layers:
+        - arn:aws:lambda:eu-west-2:637423427737:layer:aws-fis-extension-x86_64:9
+
+  # API Gateway REST API
+  DemoApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${ProjectName}-api"
+      Description: "API Gateway for FIS Lambda testing"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # API Gateway Resource (for /demo path)
+  DemoApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DemoApiGateway
+      ParentId: !GetAtt DemoApiGateway.RootResourceId
+      PathPart: demo
+
+  # API Gateway Method (GET)
+  DemoApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DemoApiGateway
+      ResourceId: !Ref DemoApiResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DemoLambdaFunction.Arn}/invocations"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+
+
+  # Lambda Permission for API Gateway
+  DemoApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DemoLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DemoApiGateway}/*/*"
+
+  # API Gateway Deployment
+  DemoApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - DemoApiMethod
+      # - DemoApiMethodPost
+    Properties:
+      RestApiId: !Ref DemoApiGateway
+      StageName: prod
+
+  FISExperimentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-FIS-Experiment-Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - fis.amazonaws.com
+                - delivery.logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-Experiment-Policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: S3Config
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${FISConfigBucket}/*"
+              - Sid: GetLambda
+                Effect: Allow
+                Action:
+                  - lambda:GetFunction
+                Resource: "*"
+              - Sid: GetResources
+                Effect: Allow
+                Action:
+                  - tag:GetResources
+                Resource: "*"
+              - Sid: ManageS3Policy
+                Effect: Allow
+                Action:
+                  - s3:PutObjectPolicy
+                  - s3:GetObjectPolicy
+                Resource:
+                  - !Sub "arn:aws:s3:::${FISLogsBucket}/logs/*"
+              - Sid: PutS3Logs
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${FISLogsBucket}/logs/*"
+              - Sid: GetS3Config
+                Effect: Allow
+                Action:
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                Resource:
+                  - !GetAtt FISLogsBucket.Arn
+              - Sid: GetDashboard
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetDashboard
+                Resource: "*"
+              - Sid: GetWidgets
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricWidgetImage
+                Resource: "*"
+              - Sid: ManageCWLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+
+
+  FISDelayExperimentTemplate:
+    Type: "AWS::FIS::ExperimentTemplate"
+    Properties:
+      Description: "FIS Lambda experiment - introduce delay"
+      Actions:
+        delay_function:
+          Description: "Delay execution of lambda"
+          ActionId: "aws:lambda:invocation-add-delay"
+          Targets:
+            Functions: "Functions-Target-1"
+          StartAfter: []
+          Parameters:
+            duration: "PT10M"
+            invocationPercentage: "100"
+            startupDelayMilliseconds: "10000"
+      ExperimentOptions:
+        EmptyTargetResolutionMode: "fail"
+        AccountTargeting: "single-account"
+      StopConditions:
+      - Source: "none"
+      Targets:
+        Functions-Target-1:
+          Filters: []
+          ResourceType: "aws:lambda:function"
+          ResourceTags: {
+            FIS-Demo: true
+          }
+          SelectionMode: "ALL"
+      RoleArn: !GetAtt FISExperimentRole.Arn
+      LogConfiguration:
+        CloudWatchLogsConfiguration:
+          LogGroupArn: !GetAtt FISLogGroup.Arn
+        S3Configuration:
+          BucketName: !Ref FISLogsBucket
+          Prefix: "logs/delays"
+        LogSchemaVersion: 2
+      Tags:
+        Name: !Sub "${ProjectName}-Lambda-Duration-Experiment"
+
+
+  FISInvokeErrorExperimentTemplate:
+    Type: "AWS::FIS::ExperimentTemplate"
+    Properties:
+      Description: "FIS Lambda experiment - introduce invocation errors"
+      Actions:
+        invoke_error:
+          Description: "Introduce invocation error"
+          ActionId: "aws:lambda:invocation-error"
+          Targets:
+            Functions: "Functions-Target-1"
+          StartAfter: []
+          Parameters:
+            duration: "PT10M"
+            invocationPercentage: "100"
+            preventExecution: "true"
+      ExperimentOptions:
+        EmptyTargetResolutionMode: "fail"
+        AccountTargeting: "single-account"
+      StopConditions:
+      - Source: "none"
+      Targets:
+        Functions-Target-1:
+          Filters: []
+          ResourceType: "aws:lambda:function"
+          ResourceTags: {
+            FIS-Demo: true
+          }
+          SelectionMode: "ALL"
+      RoleArn: !GetAtt FISExperimentRole.Arn
+      LogConfiguration:
+        CloudWatchLogsConfiguration:
+          LogGroupArn: !GetAtt FISLogGroup.Arn
+        S3Configuration:
+          BucketName: !Ref FISLogsBucket
+          Prefix: "logs/invocation-errors"
+        LogSchemaVersion: 2
+      Tags:
+        Name: !Sub "${ProjectName}-Lambda-Invocation-Errors-Experiment"
+
+
+  FISHTTPResponseExperimentTemplate:
+    Type: "AWS::FIS::ExperimentTemplate"
+    Properties:
+      Description: "FIS Lambda experiment - modify http response"
+      Actions:
+        modify_http_response:
+          Description: "Modify Lambda Response Code"
+          ActionId: "aws:lambda:invocation-http-integration-response"
+          Targets:
+            Functions: "Functions-Target-1"
+          StartAfter: []
+          Parameters:
+            duration: "PT10M"
+            invocationPercentage: "100"
+            preventExecution: "true"
+            contentTypeHeader: "application/json"
+            statusCode: "418"
+      ExperimentOptions:
+        EmptyTargetResolutionMode: "fail"
+        AccountTargeting: "single-account"
+      StopConditions:
+      - Source: "none"
+      Targets:
+        Functions-Target-1:
+          Filters: []
+          ResourceType: "aws:lambda:function"
+          ResourceTags: {
+            FIS-Demo: true
+          }
+          SelectionMode: "ALL"
+      RoleArn: !GetAtt FISExperimentRole.Arn
+      LogConfiguration:
+        CloudWatchLogsConfiguration:
+          LogGroupArn: !GetAtt FISLogGroup.Arn
+        S3Configuration:
+          BucketName: !Ref FISLogsBucket
+          Prefix: "logs/http-response"
+        LogSchemaVersion: 2
+      Tags:
+        Project: !Ref ProjectName
+        Name: !Sub "${ProjectName}-Lambda-HTTP-Response-Experiment"
+
+  FISDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: ExampleFISDashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 18,
+              "height": 1,
+              "properties": {
+                  "markdown": "# Lambda Function Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 1,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                "title": "Invocations",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  [
+                    "AWS/Lambda", 
+                    "Invocations", 
+                    "FunctionName", 
+                    "${ProjectName}-test-function"
+                  ]
+                ],
+                "stat": "SampleCount",
+                "period": 60,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 6,
+              "y": 1,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                "title": "Duration",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  [
+                    "AWS/Lambda", 
+                    "Duration", 
+                    "FunctionName", 
+                    "${ProjectName}-test-function"
+                  ]
+                ],
+                "stat": "Maximum",
+                "period": 60,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 1,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                  "region": "${AWS::Region}",
+                  "title": "Error count",
+                  "metrics": [
+                    [
+                      "AWS/Lambda", 
+                      "Errors", 
+                      "FunctionName", 
+                      "${ProjectName}-test-function"
+                    ]
+                  ],
+                  "stat": "Maximum",
+                  "period": 60,
+                  "view": "timeSeries"
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 7,
+              "width": 18,
+              "height": 1,
+              "properties": {
+                  "markdown": "# API Gateway Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 8,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                  "region": "${AWS::Region}",
+                  "title": "Count",
+                  "metrics": [
+                    [
+                      "AWS/ApiGateway", 
+                      "Count", 
+                      "ApiName", 
+                      "${ProjectName}-api"
+                    ]
+                  ],
+                  "period": 60,
+                  "stat": "SampleCount",
+                  "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 6,
+              "y": 8,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                  "region": "${AWS::Region}",
+                  "title": "Latency",
+                  "metrics": [
+                    [
+                      "AWS/ApiGateway", 
+                      "Latency", 
+                      "ApiName", 
+                      "${ProjectName}-api"
+                    ]
+                  ],
+                  "period": 60,
+                  "stat": "Maximum",
+                  "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 8,
+              "width": 6,
+              "height": 6,
+              "properties": {
+                  "region": "${AWS::Region}",
+                  "title": "4xx Error count",
+                  "metrics": [
+                    [
+                      "AWS/ApiGateway", 
+                      "4XXError", 
+                      "ApiName", 
+                      "${ProjectName}-api"
+                    ]
+                  ],
+                  "period": 60,
+                  "stat": "Maximum",
+                  "view": "timeSeries"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  ApiGatewayURL:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${DemoApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/demo"
+    Export:
+      Name: !Sub "${ProjectName}-api-url"
+  

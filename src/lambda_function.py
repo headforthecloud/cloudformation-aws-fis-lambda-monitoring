@@ -2,6 +2,7 @@
 import boto3
 import os
 import logging
+import json
 
 
 # define a logger using logging library. If LOG_LEVEL is not set, default to INFO.
@@ -22,7 +23,7 @@ def lambda_handler(event, context):
     logger.info(f"I'm running in account {account_id}")
 
     # Return API Gateway compatible response format
-    import json
+
     return {
         "statusCode": 200,
         "headers": {

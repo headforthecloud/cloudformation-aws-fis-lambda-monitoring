@@ -249,11 +249,10 @@ Resources:
                   - logs:DescribeLogGroups
                 Resource: "*"
 
-
-  FISDelayExperimentTemplate:
+  FISLambdaMonitorExperimentTemplate:
     Type: "AWS::FIS::ExperimentTemplate"
     Properties:
-      Description: "FIS Lambda experiment - introduce delay"
+      Description: "FIS Lambda monitoring experiment"
       Actions:
         delay_function:
           Description: "Delay execution of lambda"
@@ -262,14 +261,45 @@ Resources:
             Functions: "Functions-Target-1"
           StartAfter: []
           Parameters:
-            duration: "PT10M"
+            duration: "PT5M"
             invocationPercentage: "100"
             startupDelayMilliseconds: "10000"
-      ExperimentOptions:
-        EmptyTargetResolutionMode: "fail"
-        AccountTargeting: "single-account"
-      StopConditions:
-      - Source: "none"
+        wait_1:
+          Description: "Wait for 5 minutes"
+          ActionId: "aws:fis:wait"
+          Targets: {}
+          StartAfter: ["delay_function"]
+          Parameters:
+            duration: "PT5M"
+        invoke_error:
+          Description: "Introduce invocation error"
+          ActionId: "aws:lambda:invocation-error"
+          Targets:
+            Functions: "Functions-Target-1"
+          StartAfter: ["wait_1"]
+          Parameters:
+            duration: "PT5M"
+            invocationPercentage: "100"
+            preventExecution: "true"
+        wait_2:
+          Description: "Wait for 5 minutes"
+          ActionId: "aws:fis:wait"
+          Targets: {}
+          StartAfter: ["invoke_error"]
+          Parameters:
+            duration: "PT5M"
+        modify_http_response:
+          Description: "Modify Lambda Response Code"
+          ActionId: "aws:lambda:invocation-http-integration-response"
+          Targets:
+            Functions: "Functions-Target-1"
+          StartAfter: ["wait_2"]
+          Parameters:
+            duration: "PT5M"
+            invocationPercentage: "100"
+            preventExecution: "true"
+            contentTypeHeader: "application/json"
+            statusCode: "418"
       Targets:
         Functions-Target-1:
           Filters: []
@@ -278,6 +308,11 @@ Resources:
             FIS-Demo: true
           }
           SelectionMode: "ALL"
+      ExperimentOptions:
+        EmptyTargetResolutionMode: "fail"
+        AccountTargeting: "single-account"
+      StopConditions:
+      - Source: "none"
       RoleArn: !GetAtt FISExperimentRole.Arn
       LogConfiguration:
         CloudWatchLogsConfiguration:
@@ -287,90 +322,7 @@ Resources:
           Prefix: "logs/delays"
         LogSchemaVersion: 2
       Tags:
-        Name: !Sub "${ProjectName}-Lambda-Duration-Experiment"
-
-
-  FISInvokeErrorExperimentTemplate:
-    Type: "AWS::FIS::ExperimentTemplate"
-    Properties:
-      Description: "FIS Lambda experiment - introduce invocation errors"
-      Actions:
-        invoke_error:
-          Description: "Introduce invocation error"
-          ActionId: "aws:lambda:invocation-error"
-          Targets:
-            Functions: "Functions-Target-1"
-          StartAfter: []
-          Parameters:
-            duration: "PT10M"
-            invocationPercentage: "100"
-            preventExecution: "true"
-      ExperimentOptions:
-        EmptyTargetResolutionMode: "fail"
-        AccountTargeting: "single-account"
-      StopConditions:
-      - Source: "none"
-      Targets:
-        Functions-Target-1:
-          Filters: []
-          ResourceType: "aws:lambda:function"
-          ResourceTags: {
-            FIS-Demo: true
-          }
-          SelectionMode: "ALL"
-      RoleArn: !GetAtt FISExperimentRole.Arn
-      LogConfiguration:
-        CloudWatchLogsConfiguration:
-          LogGroupArn: !GetAtt FISLogGroup.Arn
-        S3Configuration:
-          BucketName: !Ref FISLogsBucket
-          Prefix: "logs/invocation-errors"
-        LogSchemaVersion: 2
-      Tags:
-        Name: !Sub "${ProjectName}-Lambda-Invocation-Errors-Experiment"
-
-
-  FISHTTPResponseExperimentTemplate:
-    Type: "AWS::FIS::ExperimentTemplate"
-    Properties:
-      Description: "FIS Lambda experiment - modify http response"
-      Actions:
-        modify_http_response:
-          Description: "Modify Lambda Response Code"
-          ActionId: "aws:lambda:invocation-http-integration-response"
-          Targets:
-            Functions: "Functions-Target-1"
-          StartAfter: []
-          Parameters:
-            duration: "PT10M"
-            invocationPercentage: "100"
-            preventExecution: "true"
-            contentTypeHeader: "application/json"
-            statusCode: "418"
-      ExperimentOptions:
-        EmptyTargetResolutionMode: "fail"
-        AccountTargeting: "single-account"
-      StopConditions:
-      - Source: "none"
-      Targets:
-        Functions-Target-1:
-          Filters: []
-          ResourceType: "aws:lambda:function"
-          ResourceTags: {
-            FIS-Demo: true
-          }
-          SelectionMode: "ALL"
-      RoleArn: !GetAtt FISExperimentRole.Arn
-      LogConfiguration:
-        CloudWatchLogsConfiguration:
-          LogGroupArn: !GetAtt FISLogGroup.Arn
-        S3Configuration:
-          BucketName: !Ref FISLogsBucket
-          Prefix: "logs/http-response"
-        LogSchemaVersion: 2
-      Tags:
-        Project: !Ref ProjectName
-        Name: !Sub "${ProjectName}-Lambda-HTTP-Response-Experiment"
+        Name: !Sub "${ProjectName}-Lambda-Monitoring-Experiment"
 
   FISDashboard:
     Type: AWS::CloudWatch::Dashboard

@@ -44,3 +44,7 @@ __pycache__
 .coverage
 
 .aws-sam
+samconfig.toml
+
+# Desktop
+.DS_Store

@@ -319,7 +319,7 @@ Resources:
           LogGroupArn: !GetAtt FISLogGroup.Arn
         S3Configuration:
           BucketName: !Ref FISLogsBucket
-          Prefix: "logs/delays"
+          Prefix: "logs/monitoring"
         LogSchemaVersion: 2
       Tags:
         Name: !Sub "${ProjectName}-Lambda-Monitoring-Experiment"

@@ -3,7 +3,7 @@ This repository contains an example configuration which can be used to demonstra
 
 It deploys the following configuration via a CloudFormation SAM template:
 
-![](infra.png)
+![](images/infra.png)
 
 * an example lambda, configured to use the FIS lambda layer,
 * an API Gateway to access the lambda,
@@ -24,8 +24,51 @@ $ cd cloudformation-aws-fis-lambda-monitoring.git
 
 $ sam build
 
-$ sam deploy --guided.   # follow the prompts
+$ sam deploy --guided --capabilities CAPABILITY_NAMED_IAM   # follow the prompts
 ```
+
+Once the template deploys, and your resources are available, the template will also output the URL of the API Gateway created as shown below:
+```
+-------------------------------------------
+Outputs                                                                                                                                          
+-------------------------------------------
+Key                 ApiGatewayURL                                                                                                                
+Description         API Gateway endpoint URL                                                                                                     
+Value               https://c23t4h9ae4.execute-api.eu-west-2.amazonaws.com/prod/demo                                                             
+-------------------------------------------
+```
+
+This can be used to test the infrastructure has deployed correctly, either by opening the URL in a browser, or a tool like `curl`.
+
+## Running the FIS experiment template
+The deployment will have created a number of resources (visible in the `Resources` tab of the CloudFormation stack in the AWS Console). One of these resources is a FIS experiment template.
+
+To access the template, click on the appropriate link in the CloudFormation stack resources or open FIS in the console; either by typing `FIS` in the console search bar, or navigating to `https://eu-west-2.console.aws.amazon.com/fis/home` (replace `eu-west-2` with your region). From here, select `Experiment templates`, and you should be able to see a template with the description `FIS Lambda monitoring experiment`.
+
+Click on the link for the associated `Experiment template ID` and you can then execute the experiment by clicking on the `Start experiment` button.
+
+## Example monitoring dashboard
+The CloudFormation stack will also deploy an example CloudWatch dashboard, again visible in the `Resources` tab of the CloudFormation stack.
+
+If you start accessing the API Gateway URL repeatedly, possibly by running this bash script:
+
+``` bash
+while :
+do
+    curl _insert_gateway_url_here &
+    sleep 0.5
+done
+```
+
+and then open the dashboard (titled `ExampleFISDashboard`), you should see something like:
+
+![](images/normal_dashboard.png)
+
+Running the FIS experiment whilst accessing the API Gateway URL should mean the dashboard changes to something like:
+
+![](images/dashboard_with_errors.png)
+
+showing anomolies associated with the 3 stages of the deployed experiment.
 
 
 ## Python Development Setup

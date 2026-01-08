@@ -1,4 +1,4 @@
-# terraform-aws-fis-lambda-monitoring
+# cloudformation-aws-fis-lambda-monitoring
 This repository contains an example configuration which can be used to demonstrate how to use Amazon's Fault Injection Service (FIS) to test monitoring in a serverless environment.
 
 It deploys the following configuration via a CloudFormation SAM template:

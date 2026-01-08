@@ -360,7 +360,12 @@ Resources:
                 ],
                 "stat": "SampleCount",
                 "period": 60,
-                "view": "timeSeries"
+                "view": "timeSeries",
+                "yAxis": {
+                    "left": {
+                        "min": 0
+                    }
+                }
               }
             },
             {
@@ -382,7 +387,12 @@ Resources:
                 ],
                 "stat": "Maximum",
                 "period": 60,
-                "view": "timeSeries"
+                "view": "timeSeries",
+                "yAxis": {
+                    "left": {
+                        "min": 0
+                    }
+                }
               }
             },
             {
@@ -436,7 +446,12 @@ Resources:
                   ],
                   "period": 60,
                   "stat": "SampleCount",
-                  "view": "timeSeries"
+                  "view": "timeSeries",
+                  "yAxis": {
+                    "left": {
+                        "min": 0
+                    }
+                }
               }
             },
             {
@@ -458,7 +473,12 @@ Resources:
                   ],
                   "period": 60,
                   "stat": "Maximum",
-                  "view": "timeSeries"
+                  "view": "timeSeries",
+                  "yAxis": {
+                    "left": {
+                        "min": 0
+                    }
+                }
               }
             },
             {
